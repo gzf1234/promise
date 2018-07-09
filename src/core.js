@@ -62,7 +62,7 @@ function Promise(fn) {
   this._state = 0;
   this._value = null;
   this._deferreds = null;
-  if (fn === noop) return;
+  if (fn === noop) return;  // 内部调用生成新的promise
   doResolve(fn, this);
 }
 Promise._onHandle = null;
@@ -87,7 +87,7 @@ function safeThen(self, onFulfilled, onRejected) {
 }
 function handle(self, deferred) {
   while (self._state === 3) {
-    self = self._value;
+    self = self._value;           // self是resolve()返回的promise
   }
   if (Promise._onHandle) {
     Promise._onHandle(self);
@@ -110,12 +110,12 @@ function handle(self, deferred) {
 }
 
 function handleResolved(self, deferred) {
-  asap(function() {
+  asap(function() {   // then中的回调函数执行必须是一个异步操作
     var cb = self._state === 1 ? deferred.onFulfilled : deferred.onRejected;
-    if (cb === null) {
-      if (self._state === 1) {
+    if (cb === null) {      
+      if (self._state === 1) {    // promise2必须以promise1的值fulfilled
         resolve(deferred.promise, self._value);
-      } else {
+      } else {    // promise2必须以相同的reason被拒绝
         reject(deferred.promise, self._value);
       }
       return;
@@ -130,7 +130,7 @@ function handleResolved(self, deferred) {
 }
 function resolve(self, newValue) {
   // Promise Resolution Procedure: https://github.com/promises-aplus/promises-spec#the-promise-resolution-procedure
-  if (newValue === self) {
+  if (newValue === self) {    // promise的resolve终值不能为自己
     return reject(
       self,
       new TypeError('A promise cannot be resolved with itself.')
@@ -138,35 +138,36 @@ function resolve(self, newValue) {
   }
   if (
     newValue &&
-    (typeof newValue === 'object' || typeof newValue === 'function')
+    (typeof newValue === 'object' || typeof newValue === 'function')  // thenable对象
   ) {
     var then = getThen(newValue);
-    if (then === IS_ERROR) {
+    if (then === IS_ERROR) {              // 在取x.then值时抛出异常，以这个异常为原因拒绝Promise
       return reject(self, LAST_ERROR);
     }
     if (
-      then === self.then &&
-      newValue instanceof Promise
+      then === self.then &&                // then是一个有onFulfilled/onRejected回调的函数
+      newValue instanceof Promise          // 当结果是一个promise时，采用该promise的状态
     ) {
-      self._state = 3;
+      self._state = 3;                     // 采用另一个promise的状态 
       self._value = newValue;
       finale(self);
       return;
-    } else if (typeof then === 'function') {
-      doResolve(then.bind(newValue), self);
+    } else if (typeof then === 'function') {  // 如果then是一个函数，以x为this调用then函数
+      doResolve(then.bind(newValue), self);   
       return;
     }
   }
   self._state = 1;
   self._value = newValue;
-  finale(self);
+  finale(self);   // 如果newValue既不是对象也不是函数，直接以newValue为值fulfill promise
 }
 
 function reject(self, newValue) {
+  // 设置reject状态和值
   self._state = 2;
   self._value = newValue;
   if (Promise._onReject) {
-    Promise._onReject(self, newValue);
+    Promise._onReject(self, newValue);  
   }
   finale(self);
 }
@@ -183,7 +184,7 @@ function finale(self) {
   }
 }
 
-function Handler(onFulfilled, onRejected, promise){
+function Handler(onFulfilled, onRejected, promise){   // promise是then需要返回的那个promise
   this.onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : null;
   this.onRejected = typeof onRejected === 'function' ? onRejected : null;
   this.promise = promise;
@@ -196,7 +197,7 @@ function Handler(onFulfilled, onRejected, promise){
  * Makes no guarantees about asynchrony.
  */
 function doResolve(fn, promise) {
-  var done = false;
+  var done = false;   // 确保一个promise状态只能改一次
   var res = tryCallTwo(fn, function (value) {
     if (done) return;
     done = true;
@@ -206,7 +207,7 @@ function doResolve(fn, promise) {
     done = true;
     reject(promise, reason);
   });
-  if (!done && res === IS_ERROR) {
+  if (!done && res === IS_ERROR) {  // promise内部改变状态时出错
     done = true;
     reject(promise, LAST_ERROR);
   }
